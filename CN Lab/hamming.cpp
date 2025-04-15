@@ -1,93 +1,138 @@
 #include <iostream>
-#include <vector>
-
+#include <cmath>
 using namespace std;
 
-// Function to calculate parity bits
-int calculate_parity(vector<int> &bits, vector<int> positions) {
-    int parity = 0;
-    for (int pos : positions) {
-        parity ^= bits[pos - 1]; // Convert to 0-index
+// Function to calculate the number of redundant bits needed
+int calcRedundantBits(int m) {
+    for (int r = 0; r < m; r++) {
+        if (pow(2, r) >= m + r + 1)
+            return r;
     }
-    return parity;
+    return 0;
 }
 
-// Function to encode 4-bit data into 7-bit Hamming code
-vector<int> encode_hamming(vector<int> data) {
-    vector<int> hamming(7, 0);
-    hamming[2] = data[0]; // D3
-    hamming[4] = data[1]; // D5
-    hamming[5] = data[2]; // D6
-    hamming[6] = data[3]; // D7
+// Function to position redundant bits in the code
+void insertParityBits(int data[], int m, int r, int hammingCode[]) {
+    int j = 0, k = 0;
 
-    // Set parity bits
-    hamming[0] = calculate_parity(hamming, {1, 3, 5, 7}); // P1
-    hamming[1] = calculate_parity(hamming, {2, 3, 6, 7}); // P2
-    hamming[3] = calculate_parity(hamming, {4, 5, 6, 7}); // P4
-
-    return hamming;
-}
-
-// Function to detect and correct a single-bit error
-vector<int> detect_and_correct(vector<int> &received) {
-    int p1 = calculate_parity(received, {1, 3, 5, 7});
-    int p2 = calculate_parity(received, {2, 3, 6, 7});
-    int p4 = calculate_parity(received, {4, 5, 6, 7});
-
-    int error_pos = p4 * 4 + p2 * 2 + p1 * 1;
-
-    if (error_pos != 0) {
-        cout << "Error detected at position: " << error_pos << endl;
-        received[error_pos - 1] ^= 1; // Flip the erroneous bit
-    } else {
-        cout << "No error detected." << endl;
-    }
-
-    return received;
-}
-
-int main() {
-    vector<int> data(4);
-    cout << "Enter 4 data bits (D3 D5 D6 D7): ";
-    for (int i = 0; i < 4; i++) {
-        cin >> data[i];
-    }
-
-    vector<int> hamming = encode_hamming(data);
-
-    cout << "Encoded Hamming Code: ";
-    for (int bit : hamming) {
-        cout << bit << " ";
-    }
-    cout << endl;
-
-    // Simulate error
-    char simulate;
-    cout << "Simulate error? (y/n): ";
-    cin >> simulate;
-
-    if (simulate == 'y' || simulate == 'Y') {
-        int pos;
-        cout << "Enter position to flip (1-7): ";
-        cin >> pos;
-        if (pos >= 1 && pos <= 7) {
-            hamming[pos - 1] ^= 1;
+    for (int i = 1; i <= m + r; i++) {
+        if (i == pow(2, j)) {
+            hammingCode[i] = 0; // Placeholder for parity bit
+            j++;
+        } else {
+            hammingCode[i] = data[k];
+            k++;
         }
     }
 
-    cout << "Received Code: ";
-    for (int bit : hamming) {
-        cout << bit << " ";
+    // Calculate parity bits
+    for (int i = 0; i < r; i++) {
+        int pos = pow(2, i);
+        int parity = 0;
+
+        for (int j = 1; j <= m + r; j++) {
+            if (j & pos) {
+                parity ^= hammingCode[j];
+            }
+        }
+
+        hammingCode[pos] = parity;
+    }
+}
+
+// Function to detect and correct single-bit error
+int detectError(int hammingCode[], int totalBits, int r) {
+    int errorPos = 0;
+
+    for (int i = 0; i < r; i++) {
+        int pos = pow(2, i);
+        int parity = 0;
+
+        for (int j = 1; j <= totalBits; j++) {
+            if (j & pos) {
+                parity ^= hammingCode[j];
+            }
+        }
+
+        if (parity != 0) {
+            errorPos += pos;
+        }
+    }
+
+    return errorPos;
+}
+
+int main() {
+    int m;
+    cout << "Enter number of data bits: ";
+    cin >> m;
+
+    int data[m];
+    cout << "Enter data bits (MSB to LSB): ";
+    for (int i = 0; i < m; i++) {
+        cin >> data[i];
+    }
+
+    int r = calcRedundantBits(m);
+    int totalBits = m + r;
+    int hammingCode[totalBits + 1]; // 1-based indexing
+
+    insertParityBits(data, m, r, hammingCode);
+
+    cout << "\nHamming code generated: ";
+    for (int i = totalBits; i >= 1; i--) {
+        cout << hammingCode[i] << " ";
     }
     cout << endl;
 
-    vector<int> corrected = detect_and_correct(hamming);
+    // Introduce an error
+    char inject;
+    cout << "\nDo you want to introduce an error? (y/n): ";
+    cin >> inject;
 
-    cout << "Corrected Code: ";
-    for (int bit : corrected) {
-        cout << bit << " ";
+    if (inject == 'y' || inject == 'Y') {
+        int errorBit;
+        cout << "Enter bit position to flip (1 to " << totalBits << "): ";
+        cin >> errorBit;
+        if (errorBit >= 1 && errorBit <= totalBits) {
+            hammingCode[errorBit] ^= 1; // Flip the bit
+
+            cout << "Corrupted Hamming code: ";
+            for (int i = totalBits; i >= 1; i--) {
+                cout << hammingCode[i] << " ";
+            }
+            cout << endl;
+        }
     }
-    cout << endl;
+
+    int errorPos = detectError(hammingCode, totalBits, r);
+
+    if (errorPos == 0) {
+        cout << "No error detected in the Hamming code.\n";
+    } else {
+        cout << "Error detected at position: " << errorPos << endl;
+        cout << "Correcting the error...\n";
+        hammingCode[errorPos] ^= 1;
+
+        cout << "Corrected Hamming code: ";
+        for (int i = totalBits; i >= 1; i--) {
+            cout << hammingCode[i] << " ";
+        }
+        cout << endl;
+    }
 
     return 0;
 }
+
+
+// Enter number of data bits: 4
+// Enter data bits (MSB to LSB): 1 0 1 1
+
+// Hamming code generated: 1 1 0 0 1 1 0
+
+// Do you want to introduce an error? (y/n): y
+// Enter bit position to flip (1 to 7): 3
+// Corrupted Hamming code: 1 1 0 0 0 1 0
+// Error detected at position: 3
+// Correcting the error...
+// Corrected Hamming code: 1 1 0 0 1 1 0
